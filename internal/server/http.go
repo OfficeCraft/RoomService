@@ -1,24 +1,85 @@
 package server
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
+	"github.com/OfficeCraft/RoomService/internal/room"
 	"github.com/OfficeCraft/RoomService/internal/websocket"
 )
 
+var roomManager = room.NewManager()
+
+type RoomCreateResponse struct {
+	RoomID  string `json:"room_id"`
+	Success bool   `json:"success"`
+}
+
 func Start(addr string) {
-	http.HandleFunc("/ping", pongHandler)
 
-	http.HandleFunc("/ws", websocket.Handler)
+	mux := http.NewServeMux()
 
-	log.Printf("Starting server at %s\n", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatalf("Could not start server: %s\n", err.Error())
+	mux.HandleFunc("/ws", websocket.Handler)
+	mux.HandleFunc("/ping", pingHandler)
+
+	mux.HandleFunc("/room/create", createRoomHandler)
+	mux.HandleFunc("/rooms", listRoomsHandler)
+
+	log.Printf("Starting server on %s\n", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatalf("Server failed to start: %s\n", err.Error())
 	}
 }
 
-func pongHandler(w http.ResponseWriter, r *http.Request) {
+func pingHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("pong"))
+}
+
+func createRoomHandler(w http.ResponseWriter, r *http.Request) {
+	// Placeholder for room creation logic
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	_, id := roomManager.CreateRoom()
+	log.Printf("Room created with ID: %s\n", id)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	response := RoomCreateResponse{
+		RoomID:  id,
+		Success: true,
+	}
+
+	jsonResponse, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, "Failed to create room", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(jsonResponse)
+}
+
+func listRoomsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rooms := roomManager.ListRooms()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	jsonResponse, err := json.Marshal(rooms)
+	if err != nil {
+		http.Error(w, "Failed to list rooms", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(jsonResponse)
 }
