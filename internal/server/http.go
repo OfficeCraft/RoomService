@@ -10,6 +10,7 @@ import (
 )
 
 var roomManager = room.NewManager()
+var hub = websocket.NewHub(roomManager)
 
 type RoomCreateResponse struct {
 	RoomID  string `json:"room_id"`
@@ -18,13 +19,40 @@ type RoomCreateResponse struct {
 
 func Start(addr string) {
 
+	go hub.Run()
+
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/ws", websocket.Handler)
+	mux.HandleFunc("/ws/room", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("WebSocket /ws/room endpoint hit")
+		websocket.Handler(hub, w, r)
+	})
+
 	mux.HandleFunc("/ping", pingHandler)
 
 	mux.HandleFunc("/room/create", createRoomHandler)
 	mux.HandleFunc("/rooms", listRoomsHandler)
+	mux.HandleFunc("/room/getClients", func(w http.ResponseWriter, r *http.Request) {
+		roomId := r.URL.Query().Get("roomId")
+		room, exists := roomManager.GetRoom(roomId)
+		if !exists {
+			http.Error(w, "Room not found", http.StatusNotFound)
+			return
+		}
+
+		clients := room.ListClients()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		jsonResponse, err := json.Marshal(clients)
+		if err != nil {
+			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
+			return
+		}
+
+		w.Write(jsonResponse)
+	})
 
 	log.Printf("Starting server on %s\n", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {

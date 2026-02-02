@@ -66,6 +66,14 @@ func (m *Manager) PrintAllRoomsForDebug() {
 	fmt.Println("All Rooms:")
 	for id, room := range m.rooms {
 		fmt.Println("Room ID:", id)
-		room.PrintRoomForDebug()
+		room.printUnsafe()
 	}
+}
+
+func (m *Manager) RoomExists(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	_, exists := m.rooms[id]
+	return exists
 }
