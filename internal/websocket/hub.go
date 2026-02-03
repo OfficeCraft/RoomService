@@ -16,7 +16,7 @@ type Message struct {
 
 type Hub struct {
 	Rooms      *room.Manager
-	Clients    map[*Client]bool
+	Clients    map[string][]*Client
 	Register   chan *Client
 	Unregister chan *Client
 	Broadcast  chan Message
@@ -25,7 +25,7 @@ type Hub struct {
 func NewHub(rm *room.Manager) *Hub {
 	return &Hub{
 		Rooms:      rm,
-		Clients:    make(map[*Client]bool),
+		Clients:    make(map[string][]*Client),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 		Broadcast:  make(chan Message),
@@ -37,11 +37,16 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.Register:
 			log.Printf("Registering client %s to room %s", client.Id, client.RoomId)
-			h.Clients[client] = true
+			h.Clients[client.RoomId] = append(h.Clients[client.RoomId], client)
 		case client := <-h.Unregister:
 			log.Printf("Unregistering client %s from room %s", client.Id, client.RoomId)
-			if _, ok := h.Clients[client]; ok {
-				delete(h.Clients, client)
+			if clients, ok := h.Clients[client.RoomId]; ok {
+				for i, c := range clients {
+					if c == client {
+						h.Clients[client.RoomId] = append(clients[:i], clients[i+1:]...)
+						break
+					}
+				}
 				close(client.Send)
 			}
 		case message := <-h.Broadcast:
@@ -70,14 +75,24 @@ func (h *Hub) Run() {
 				continue
 			}
 
-			for client := range h.Clients {
-				if client.RoomId == message.RoomId {
-					select {
-					case client.Send <- data:
-						println("Sent message to client", client.Id)
-					default:
-						close(client.Send)
-						delete(h.Clients, client)
+			clients := h.Clients[message.RoomId]
+			failedClients := []*Client{}
+
+			for _, client := range clients {
+				select {
+				case client.Send <- data:
+				default:
+					failedClients = append(failedClients, client)
+				}
+			}
+
+			// Remove failed clients after iteration
+			for _, failedClient := range failedClients {
+				close(failedClient.Send)
+				for i, c := range h.Clients[message.RoomId] {
+					if c == failedClient {
+						h.Clients[message.RoomId] = append(h.Clients[message.RoomId][:i], h.Clients[message.RoomId][i+1:]...)
+						break
 					}
 				}
 			}

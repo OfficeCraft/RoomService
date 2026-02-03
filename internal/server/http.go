@@ -32,27 +32,7 @@ func Start(addr string) {
 
 	mux.HandleFunc("/room/create", createRoomHandler)
 	mux.HandleFunc("/rooms", listRoomsHandler)
-	mux.HandleFunc("/room/getClients", func(w http.ResponseWriter, r *http.Request) {
-		roomId := r.URL.Query().Get("roomId")
-		room, exists := roomManager.GetRoom(roomId)
-		if !exists {
-			http.Error(w, "Room not found", http.StatusNotFound)
-			return
-		}
-
-		clients := room.ListClients()
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		jsonResponse, err := json.Marshal(clients)
-		if err != nil {
-			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
-			return
-		}
-
-		w.Write(jsonResponse)
-	})
+	mux.HandleFunc("/room/getClients", getListofClientsInRoomHandler)
 
 	log.Printf("Starting server on %s\n", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
@@ -106,6 +86,28 @@ func listRoomsHandler(w http.ResponseWriter, r *http.Request) {
 	jsonResponse, err := json.Marshal(rooms)
 	if err != nil {
 		http.Error(w, "Failed to list rooms", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(jsonResponse)
+}
+
+func getListofClientsInRoomHandler(w http.ResponseWriter, r *http.Request) {
+	roomId := r.URL.Query().Get("roomId")
+	room, exists := roomManager.GetRoom(roomId)
+	if !exists {
+		http.Error(w, "Room not found", http.StatusNotFound)
+		return
+	}
+
+	clients := room.ListClients()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	jsonResponse, err := json.Marshal(clients)
+	if err != nil {
+		http.Error(w, "Failed to get clients", http.StatusInternalServerError)
 		return
 	}
 
